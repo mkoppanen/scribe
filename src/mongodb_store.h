@@ -51,13 +51,15 @@ class MongoDBStore : public Store {
 
  protected:
    mongo::DBClientConnection connection;
-   
+   bool hasConnection;
+    
    std::string remoteHost;
    long int remotePort;
    std::string database;
-   std::string collection;
+   std::string collection; 
    bool forceFsync;
-   bool hasConnection;
+   bool addTimestamp;
+   bool categoryAsCollection;
 
    bool verifyConnection();
 

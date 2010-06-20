@@ -27,61 +27,73 @@ MongoDBStore::MongoDBStore(StoreQueue* storeq,
                           const string& category,
                           bool multi_category)
   : Store(storeq, category, "mongodb", multi_category),
+    connection(true),
+    hasConnection(false),
     remoteHost("localhost"),
     remotePort(27017),
     database("scribe"),
     collection("scribe"),
-    forceFsync(false)
+    forceFsync(false),
+    addTimestamp(false),
+    categoryAsCollection(false)
     {
-    // we can't open the connection until we get configured
+    LOG_OPER("[%s] MongoDB constructor called", categoryHandled.c_str());
 }
 
-MongoDBStore::~MongoDBStore() {
-  // TODO: add
-}
+MongoDBStore::~MongoDBStore() {}
 
 void MongoDBStore::configure(pStoreConf configuration, pStoreConf parent) {
   Store::configure(configuration, parent);
-  
+
   // Defaults should be fine if not set
   configuration->getString("remote_host", remoteHost);
   configuration->getInt("remote_port", remotePort);
   configuration->getString("database", database);
   configuration->getString("collection", collection);
   
-  string temp;
-  if (configuration->getString("force_fsync", temp)) {
-    if (0 == temp.compare("yes")) {
+  string tmp;
+  if (configuration->getString("force_fsync", tmp)) {
+    if (0 == tmp.compare("yes")) {
       forceFsync = true;
+    }
+  }
+  
+  if (configuration->getString("add_timestamp", tmp)) {
+    if (0 == tmp.compare("yes")) {
+      addTimestamp = true;
+    }
+  }
+  
+  /*
+    If set uses the category as collection name. Takes precedence over
+    configured category name
+  */
+  if (configuration->getString("use_category_as_collection", tmp)) {
+    if (0 == tmp.compare("yes")) {
+      categoryAsCollection = true;
     }
   }
 }
 
 void MongoDBStore::periodicCheck() {
   if (verifyConnection() == false) {
-    LOG_OPER("[%s] Connection is in failed state during periodic check", categoryHandled.c_str());
+    LOG_OPER("[%s] MongoDB connection in failed state during periodic check", categoryHandled.c_str());
   }
 }
 
 bool MongoDBStore::open() {
-  
-  // Already has a connection
-  if (verifyConnection() == true) {
-    return true;
-  } 
-  
   try {
     std::string server = remoteHost + ":" + boost::lexical_cast<std::string>(remotePort);
     connection.connect(server);
     hasConnection = true;
+    connection.resetError();
     
     LOG_OPER("[%s] MongoDB connected to server: %s", categoryHandled.c_str(), server.c_str());
+    return true;
   } catch (std::exception &e) {
     LOG_OPER("[%s] MongoDB failed to connect: %s", categoryHandled.c_str(), e.what());
     return false;
   }
-  
-  return true;
 }
 
 void MongoDBStore::close() {
@@ -96,72 +108,89 @@ shared_ptr<Store> MongoDBStore::copy(const std::string &category) {
   MongoDBStore *store = new MongoDBStore(storeQueue, category, multiCategory);
   shared_ptr<Store> copied = shared_ptr<Store>(store);
 
-  store->remoteHost = remoteHost;
-  store->remotePort = remotePort;
-  store->database   = database;
-  store->collection = collection;
-  store->forceFsync = forceFsync;
-
+  store->remoteHost           = remoteHost;
+  store->remotePort           = remotePort;
+  store->database             = database;
+  store->collection           = collection;
+  store->forceFsync           = forceFsync;
+  store->addTimestamp         = addTimestamp;
+  store->categoryAsCollection = categoryAsCollection;
   return copied;
 }
 
 bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages) {
   
-  if (!isOpen()) {
-    if (!open()) {
-      LOG_OPER("[%s] Connection failed in MongoDBStore::handleMessages()",
-               categoryHandled.c_str());
+  if (verifyConnection() == false) {
       return false;
-    }
   }
 
   bool success = true;
   unsigned long messagesHandled = 0;
+  time_t curTime;
+  
+  if (addTimestamp) { 
+    curTime = time(0);
+  }
+  
+  string ns = database + "." + (categoryAsCollection ? categoryHandled : collection);
+  
+  LOG_OPER("[%s] MongoDB saving messages into %s",
+           categoryHandled.c_str(), ns.c_str());
   
   for (logentry_vector_t::iterator iter = messages->begin();
        iter != messages->end();
        ++iter) {
     
     try {
-      connection.insert(database + "." + collection, 
-                        BSON(GENOID << "entry"    << (*iter)->message.data()
-                                    << "category" << categoryHandled));
-
+      
+      BSONObjBuilder b;
+      
+      b.append("entry", (*iter)->message.data());
+      b.append("category", categoryHandled);    
+      
+      if (addTimestamp) {
+        b.appendTimeT("timestamp", curTime);
+      }
+      
+      connection.insert(ns, b.obj());
       ++messagesHandled;      
          
-      } catch (const std::exception& e) {
-         success = false;
-         
-         LOG_OPER("[%s] MongoDB store failed to write. Exception: %s",
-                  categoryHandled.c_str(), e.what());
-         
-         // Something went wrong but we have handled something probably
-         // Delete messages we have handled already     
-         if (messagesHandled) {
-           messages->erase(messages->begin(), iter);
-         }
-      }
-  }
+    } catch (const std::exception& e) {
+      success = false;
+
+      LOG_OPER("[%s] MongoDB store failed to write. Exception: %s",
+              categoryHandled.c_str(), e.what());
+    }
+  }  
   
+  if (!success && messagesHandled) {
+      // Something went wrong but we have handled something probably
+      // Delete messages we have handled already     
+      messages->erase(messages->begin(), messages->begin() + messagesHandled);
+  }
   return success;
 }
 
 void MongoDBStore::flush() {
   if (forceFsync && verifyConnection()) {
-    BSONObj info;
-    BSONObj cmd = BSON("fsync" << 1);
+    try {    
+      BSONObj info;
+      BSONObj cmd = BSON("fsync" << 1);
 
-    if (connection.runCommand("admin", cmd, info) == false) {
-      LOG_OPER("[%s] Fsync failed: %s", categoryHandled.c_str(), info.getStringField("errmsg"));
-      return;
+      if (connection.isFailed() || connection.runCommand("admin", cmd, info) == false) {
+        LOG_OPER("[%s] Fsync failed: %s", categoryHandled.c_str(), info.getStringField("errmsg"));
+        return;
+      }
+    } catch (std::exception &e) {
+      LOG_OPER("[%s] Fsync failed: %s", categoryHandled.c_str(), e.what());
     }
   }
 }
 
 bool MongoDBStore::verifyConnection() {
   if (!hasConnection || connection.isFailed()) {
-    LOG_OPER("[%s] No active connection", categoryHandled.c_str());
-    return false;
+    LOG_OPER("[%s] MongoDB No active connection or connection failed", categoryHandled.c_str());
+    return open();
   }
   return true;
 }
