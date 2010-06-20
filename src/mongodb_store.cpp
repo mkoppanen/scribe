@@ -132,10 +132,7 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
   }
   
   string ns = database + "." + (categoryAsCollection ? categoryHandled : collection);
-  
-  LOG_OPER("[%s] MongoDB saving messages into %s",
-           categoryHandled.c_str(), ns.c_str());
-  
+    
   for (logentry_vector_t::iterator iter = messages->begin();
        iter != messages->end();
        ++iter) {
@@ -160,7 +157,10 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
       LOG_OPER("[%s] MongoDB store failed to write. Exception: %s",
               categoryHandled.c_str(), e.what());
     }
-  }  
+  } 
+  
+  LOG_OPER("[%s] MongoDB stored <%ld> messages out of <%ld> into <%s>",
+           categoryHandled.c_str(), messagesHandled, messages->size(), ns.c_str());
   
   if (!success && messagesHandled) {
       // Something went wrong but we have handled something probably
