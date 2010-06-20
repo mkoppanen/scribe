@@ -37,7 +37,7 @@ MongoDBStore::MongoDBStore(StoreQueue* storeq,
     addTimestamp(false),
     categoryAsCollection(false)
     {
-    LOG_OPER("[%s] MongoDB constructor called", categoryHandled.c_str());
+      // Connect when we have configuration
 }
 
 MongoDBStore::~MongoDBStore() {}
@@ -85,9 +85,8 @@ bool MongoDBStore::open() {
   try {
     std::string server = remoteHost + ":" + boost::lexical_cast<std::string>(remotePort);
     connection.connect(server);
-    hasConnection = true;
     connection.resetError();
-    
+    hasConnection = true;
     LOG_OPER("[%s] MongoDB connected to server: %s", categoryHandled.c_str(), server.c_str());
     return true;
   } catch (std::exception &e) {
