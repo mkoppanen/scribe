@@ -29,6 +29,10 @@
 #include "scribe_server.h"
 #include "network_dynamic_config.h"
 
+#ifdef USE_SCRIBE_MONGODB
+#include "mongodb_store.h"
+#endif
+
 using namespace std;
 using namespace boost;
 using namespace boost::filesystem;
@@ -109,6 +113,11 @@ Store::createStore(StoreQueue* storeq, const string& type,
   } else if (0 == type.compare("thriftmultifile")) {
     return shared_ptr<Store>(new ThriftMultiFileStore(storeq, category,
                                                       multi_category));
+#ifdef USE_SCRIBE_MONGODB
+  } else if (0 == type.compare("mongodb")) {
+    return shared_ptr<Store>(new MongoDBStore(storeq, category,
+                                              multi_category));  
+#endif // USE_SCRIBE_MONGODB
   } else {
     return shared_ptr<Store>();
   }

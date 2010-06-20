@@ -31,6 +31,7 @@ all:
 # fb_home
 # fb303_home
 # hadoop_home
+# mongo_home
 #
 THRIFT = $(thrift_home)/bin/thrift
 
@@ -50,10 +51,13 @@ endif
 
 
 # Set libraries external to this component.
-EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lfb303 -lthrift -lthriftnb
+EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -L$(mongo_home) -lfb303 -lthrift -lthriftnb
 EXTERNAL_LIBS += -levent -lpthread
 if USE_SCRIBE_HDFS
   EXTERNAL_LIBS += -lhdfs -ljvm
+endif
+if USE_SCRIBE_MONGODB
+  EXTERNAL_LIBS += -lmongoclient -lboost_thread-mt -lboost_filesystem -lboost_program_options
 endif
 
 # Section 2 ############################################################################
@@ -67,6 +71,7 @@ AM_CPPFLAGS += -I$(thrift_home)/include/thrift
 AM_CPPFLAGS += -I$(fb303_home)/include/thrift
 AM_CPPFLAGS += -I$(fb303_home)/include/thrift/fb303
 AM_CPPFLAGS += -I$(hadoop_home)/include
+AM_CPPFLAGS += -I$(mongo_home)/include/mongo
 AM_CPPFLAGS += $(BOOST_CPPFLAGS)
 AM_CPPFLAGS += $(FB_CPPFLAGS) $(DEBUG_CPPFLAGS)
 
@@ -101,6 +106,9 @@ bin_PROGRAMS = scribed
 scribed_SOURCES = store.cpp store_queue.cpp conf.cpp file.cpp conn_pool.cpp scribe_server.cpp network_dynamic_config.cpp dynamic_bucket_updater.cpp $(FB_SOURCES) $(ENV_SOURCES)
 if USE_SCRIBE_HDFS
   scribed_SOURCES += HdfsFile.cpp
+endif
+if USE_SCRIBE_MONGODB
+  scribed_SOURCES += mongodb_store.cpp
 endif
 scribed_LDADD = $(EXTERNAL_LIBS) $(INTERNAL_LIBS)
 
