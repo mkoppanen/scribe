@@ -65,8 +65,8 @@ void MongoDBStore::configure(pStoreConf configuration, pStoreConf parent) {
   }
   
   /*
-    If set uses the category as collection name. Takes precedence over
-    configured category name
+    If set uses the category as collection name. 
+    Takes precedence over configured collection name
   */
   if (configuration->getString("use_category_as_collection", tmp)) {
     if (0 == tmp.compare("yes")) {
@@ -188,7 +188,7 @@ void MongoDBStore::flush() {
 
 bool MongoDBStore::verifyConnection() {
   if (!hasConnection || connection.isFailed()) {
-    LOG_OPER("[%s] MongoDB No active connection or connection failed", categoryHandled.c_str());
+    LOG_OPER("[%s] MongoDB No active connection or connection failed, reconnecting", categoryHandled.c_str());
     return open();
   }
   return true;
