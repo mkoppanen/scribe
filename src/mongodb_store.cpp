@@ -132,13 +132,12 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
   }
   
   string ns = database + "." + (categoryAsCollection ? categoryHandled : collection);
-    
+
   for (logentry_vector_t::iterator iter = messages->begin();
        iter != messages->end();
        ++iter) {
     
     try {
-      
       BSONObjBuilder b;
       
       b.append("entry", (*iter)->message.data());
@@ -147,8 +146,8 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
       if (addTimestamp) {
         b.appendTimeT("timestamp", curTime);
       }
-      
-      connection.insert(ns, b.obj());
+
+      connection.insert(ns, b.done());
       ++messagesHandled;      
          
     } catch (const std::exception& e) {
