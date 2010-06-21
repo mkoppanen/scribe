@@ -75,13 +75,17 @@ void MongoDBStore::configure(pStoreConf configuration, pStoreConf parent) {
   }
 }
 
-void MongoDBStore::periodicCheck() {
-  if (verifyConnection() == false) {
+void MongoDBStore::periodicCheck() { 
+  if (false == verifyConnection(true)) {
     LOG_OPER("[%s] MongoDB connection in failed state during periodic check", categoryHandled.c_str());
   }
 }
 
 bool MongoDBStore::open() {
+  if (true == verifyConnection(false)) {
+    return true;
+  }
+  
   try {
     std::string server = remoteHost + ":" + boost::lexical_cast<std::string>(remotePort);
     connection.connect(server);
@@ -100,7 +104,7 @@ void MongoDBStore::close() {
 }
 
 bool MongoDBStore::isOpen() {
-  return verifyConnection();
+  return verifyConnection(true);
 }
 
 shared_ptr<Store> MongoDBStore::copy(const std::string &category) {
@@ -119,7 +123,7 @@ shared_ptr<Store> MongoDBStore::copy(const std::string &category) {
 
 bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages) {
   
-  if (verifyConnection() == false) {
+  if (false == verifyConnection(true)) {
       return false;
   }
 
@@ -131,7 +135,7 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
     curTime = time(0);
   }
   
-  string ns = database + "." + (categoryAsCollection ? categoryHandled : collection);
+  string ns = database + "." + (categoryAsCollection ? categoryToCollection(categoryHandled) : collection);
 
   for (logentry_vector_t::iterator iter = messages->begin();
        iter != messages->end();
@@ -148,13 +152,13 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
       }
 
       connection.insert(ns, b.done());
-      ++messagesHandled;      
-         
+      messagesHandled += 1;
+
     } catch (const std::exception& e) {
       success = false;
 
-      LOG_OPER("[%s] MongoDB store failed to write. Exception: %s",
-              categoryHandled.c_str(), e.what());
+      LOG_OPER("[%s] MongoDB store failed to write. Handled messages %ld Exception: %s",
+              categoryHandled.c_str(), messagesHandled, e.what());
     }
   } 
   
@@ -170,7 +174,7 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
 }
 
 void MongoDBStore::flush() {
-  if (forceFsync && verifyConnection()) {
+  if (true == forceFsync && true == verifyConnection(true)) {
     try {    
       BSONObj info;
       BSONObj cmd = BSON("fsync" << 1);
@@ -185,12 +189,31 @@ void MongoDBStore::flush() {
   }
 }
 
-bool MongoDBStore::verifyConnection() {
-  if (!hasConnection || connection.isFailed()) {
-    LOG_OPER("[%s] MongoDB No active connection or connection failed, reconnecting", categoryHandled.c_str());
-    return open();
+bool MongoDBStore::verifyConnection(bool reconnectIfFailed) {
+  if (false == hasConnection || true == connection.isFailed()) {
+    if (reconnectIfFailed) {
+      LOG_OPER("[%s] MongoDB No active connection or connection failed, reconnecting", categoryHandled.c_str());
+      return open();
+    }
+    return false;
   }
   return true;
+}
+
+/*
+  Set allowed set of characters for collections and
+  replace anything else with an underscore
+*/
+std::string MongoDBStore::categoryToCollection(const std::string& str) {
+  string retval = str;
+  std::string pattern   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+  string::size_type pos = retval.find_first_not_of(pattern);
+
+  while (pos != string::npos) {
+    retval[pos] = '_';
+    pos = retval.find_first_not_of(pattern, pos + 1);
+  }
+  return retval;
 }
 
 #endif

@@ -61,7 +61,8 @@ class MongoDBStore : public Store {
    bool addTimestamp;
    bool categoryAsCollection;
 
-   bool verifyConnection();
+   bool verifyConnection(bool reconnectIfFailed);
+   std::string categoryToCollection(const std::string& str);
 
  private:
   // disallow copy, assignment, and empty construction
