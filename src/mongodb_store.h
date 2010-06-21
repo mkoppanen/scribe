@@ -60,6 +60,7 @@ class MongoDBStore : public Store {
    bool forceFsync;
    bool addTimestamp;
    bool categoryAsCollection;
+   bool safeInsert;
 
    bool verifyConnection(bool reconnectIfFailed);
    std::string categoryToCollection(const std::string& str);

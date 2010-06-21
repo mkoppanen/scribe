@@ -35,7 +35,8 @@ MongoDBStore::MongoDBStore(StoreQueue* storeq,
     collection("scribe"),
     forceFsync(false),
     addTimestamp(false),
-    categoryAsCollection(false)
+    categoryAsCollection(false),
+    safeInsert(false)
     {
       // Connect when we have configuration
 }
@@ -71,6 +72,12 @@ void MongoDBStore::configure(pStoreConf configuration, pStoreConf parent) {
   if (configuration->getString("use_category_as_collection", tmp)) {
     if (0 == tmp.compare("yes")) {
       categoryAsCollection = true;
+    }
+  }
+  
+  if (configuration->getString("safe_insert", tmp)) {
+    if (0 == tmp.compare("yes")) {
+      safeInsert = true;
     }
   }
 }
@@ -118,6 +125,7 @@ shared_ptr<Store> MongoDBStore::copy(const std::string &category) {
   store->forceFsync           = forceFsync;
   store->addTimestamp         = addTimestamp;
   store->categoryAsCollection = categoryAsCollection;
+  store->safeInsert           = safeInsert;
   return copied;
 }
 
@@ -137,30 +145,46 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
   
   string ns = database + "." + (categoryAsCollection ? categoryToCollection(categoryHandled) : collection);
 
-  for (logentry_vector_t::iterator iter = messages->begin();
-       iter != messages->end();
-       ++iter) {
-    
-    try {
+  try {
+
+    for (logentry_vector_t::iterator iter = messages->begin();
+        iter != messages->end();
+        ++iter) {
+
+      BSONObj p;
       BSONObjBuilder b;
       
-      b.append("entry", (*iter)->message.data());
-      b.append("category", categoryHandled);    
-      
+      b << GENOID << "entry"    << (*iter)->message.data() 
+                  << "category" << categoryHandled;
+
       if (addTimestamp) {
         b.appendTimeT("timestamp", curTime);
       }
 
-      connection.insert(ns, b.done());
+      p = b.done();
+      connection.insert(ns, p);
+      
+      if (safeInsert) {
+        BSONElement e;
+        BSONObj fields;
+        
+        if (p.getObjectID(e) == true) {
+          BSONObj ret = connection.findOne(ns, QUERY("_id" << e));
+          
+          if (ret.isEmpty()) {
+            throw std::runtime_error("The document was not found when queried");
+          }
+        }
+      }
       messagesHandled += 1;
+    } 
+  
+  } catch (const std::exception& e) {
+    success = false;
 
-    } catch (const std::exception& e) {
-      success = false;
-
-      LOG_OPER("[%s] MongoDB store failed to write. Handled messages %ld Exception: %s",
-              categoryHandled.c_str(), messagesHandled, e.what());
-    }
-  } 
+    LOG_OPER("[%s] MongoDB store failed to write. Exception: %s",
+            categoryHandled.c_str(), e.what());       
+  }
   
   LOG_OPER("[%s] MongoDB stored <%ld> messages out of <%ld> into <%s>",
            categoryHandled.c_str(), messagesHandled, messages->size(), ns.c_str());
