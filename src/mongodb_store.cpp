@@ -168,11 +168,14 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
         BSONElement e;
         BSONObj fields;
         
+        // Flush also checks for forceFsync flag
+        flush();
+        
         if (p.getObjectID(e) == true) {
           BSONObj ret = connection.findOne(ns, QUERY("_id" << e));
           
           if (ret.isEmpty()) {
-            throw std::runtime_error("The document was not found when queried");
+            throw std::runtime_error("safe_insert failed, the document was not stored properly");
           }
         }
       }

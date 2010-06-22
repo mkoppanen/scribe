@@ -61,6 +61,7 @@ Requirements
 [fb303] Facebook Bassline (included in thrift/contrib/fb303/)
    fb303 r697294 or later is required.
 [hadoop] optional. version 0.19.1 or higher (http://hadoop.apache.org)
+[mongodb] optional. Tested with version 1.4.2 (http://www.mongodb.org)
 
 These libraries are open source and may be freely obtained, but they are not
 provided as a part of this distribution.
@@ -130,6 +131,12 @@ Examples:
 
 # If the build process cannot find your Hadoop/Jvm installs, you may need to specify them manually:
 ./configure --with-hadooppath=/usr/local/hadoop --enable-hdfs CPPFLAGS="-I/usr/local/java/include -I/usr/local/java/include/linux" LDFLAGS="-ljvm -lhdfs"
+
+# To build scribe with MongoDB support
+./configure --enable-mongodb
+
+# If the build process cannot find your MongoDB installation, you may need to specify path manually:
+./configure --with-mongodbpath=/usr
 
 # To set thrift home to a non-default location
 ./configure --with-thriftpath=/myhome/local/thrift
