@@ -163,7 +163,8 @@ bool MongoDBStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages)
 
       p = b.done();
       connection.insert(ns, p);
-      
+      connection.ensureIndex(ns, BSON("category" << 1));
+
       if (safeInsert) {
         BSONElement e;
         BSONObj fields;
